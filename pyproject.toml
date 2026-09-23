@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "yomitan-fishaudio-bridge"
+version = "0.1.0"
+description = "Local TTS bridge for Yomitan via Fish Audio"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "Yomitan FishAudio Bridge contributors" }]
+dependencies = []
+
+[project.optional-dependencies]
+tray = ["pystray>=0.19", "pillow>=10"]
+dev  = ["pyinstaller>=6", "pillow>=10"]
+
+[project.scripts]
+yomitan-fishaudio-bridge = "yomitan_fishaudio_bridge.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/yomitan_fishaudio_bridge"]
