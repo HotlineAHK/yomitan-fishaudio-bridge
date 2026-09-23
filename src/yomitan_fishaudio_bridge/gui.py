@@ -239,7 +239,7 @@ class App:
                      font=ctk.CTkFont(size=13, weight="bold")).pack(anchor="w", padx=16, pady=(12, 6))
         self.log_text = ctk.CTkTextbox(
             log_frame, height=120, corner_radius=8, border_width=0,
-            fg_color=("##fafafb", "#1f1f22"),
+            fg_color=("#fafafb", "#1f1f22"),
             font=ctk.CTkFont(family=_MONO, size=11),
         )
         self.log_text.pack(fill="both", expand=True, padx=12, pady=(0, 12))
