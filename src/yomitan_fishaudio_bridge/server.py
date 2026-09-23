@@ -20,7 +20,6 @@ FISH_API_URL = "https://api.fish.audio/v1/tts"
 
 class _Handler(BaseHTTPRequestHandler):
     server_version = f"YomitanFishAudioBridge/{__version__}"
-    bridge = None  # set by BridgeServer
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -44,6 +43,33 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _html(self, status, html):
+        body = html.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self._cors()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _index(self):
+        port = self.server.bridge.port
+        self._html(200, f"""<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<title>Yomitan FishAudio Bridge</title>
+<style>body{{font:16px/1.5 system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#222}}
+code{{background:#f3f3f3;padding:2px 6px;border-radius:4px}}
+h1{{color:#c8441a}}</style></head>
+<body>
+<h1>Yomitan FishAudio Bridge</h1>
+<p>Сервер работает на порту <code>{port}</code>.</p>
+<p>Это не веб-интерфейс. Отсюда ничего нажимать не нужно — все настройки
+в отдельном окне приложения.</p>
+<p>URL для Yomitan:</p>
+<p><code>http://127.0.0.1:{port}/audio_list?term={{term}}&amp;reading={{reading}}</code></p>
+<p>Проверка: <a href="/health">/health</a></p>
+</body></html>""")
+
     def do_OPTIONS(self):
         self.send_response(204)
         self._cors()
@@ -58,9 +84,11 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/tts":
             return self._tts(params)
         if path == "/speakers":
-            return self._json(200, self.bridge.variants)
+            return self._json(200, self.server.bridge.variants)
         if path == "/health":
             return self._json(200, {"ok": True, "version": __version__})
+        if path in ("/", ""):
+            return self._index()
         self._json(404, {"detail": "Not found"})
 
     def _audio_list(self, params):
@@ -70,7 +98,7 @@ class _Handler(BaseHTTPRequestHandler):
         if not target:
             return self._json(200, {"type": "audioSourceList", "audioSources": []})
         encoded = urllib.parse.quote(target)
-        host = self.headers.get("Host") or f"{self.bridge.host}:{self.bridge.port}"
+        host = self.headers.get("Host") or f"{self.server.bridge.host}:{self.server.bridge.port}"
         base = f"http://{host}"
         sources = [
             {
@@ -81,7 +109,7 @@ class _Handler(BaseHTTPRequestHandler):
                     f"&format={v.get('format', 'mp3')}"
                 ),
             }
-            for v in self.bridge.variants
+            for v in self.server.bridge.variants
         ]
         self._json(200, {"type": "audioSourceList", "audioSources": sources})
 
@@ -99,7 +127,7 @@ class _Handler(BaseHTTPRequestHandler):
         active_ref = reference_id or cfg["reference_id"]
         active_fmt = fmt or cfg["format"]
         try:
-            audio = self.bridge.synthesize(target, active_ref, active_fmt)
+            audio = self.server.bridge.synthesize(target, active_ref, active_fmt)
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", "replace")
             log.error("Fish Audio HTTP %s: %s", e.code, body)
