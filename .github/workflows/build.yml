@@ -129,14 +129,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          cd artifacts
-          for d in */; do
-            name="${d%/}"
-            if [ -f "$d/yomitan-fishaudio-bridge.exe" ]; then
-              (cd "$d" && zip -r "../../release/${name}.zip" yomitan-fishaudio-bridge.exe)
-            elif [ -f "$d/yomitan-fishaudio-bridge" ]; then
+          for d in artifacts/*/; do
+            name="$(basename "$d")"
+            if [ -f "${d}yomitan-fishaudio-bridge.exe" ]; then
+              (cd "$d" && zip -r "$GITHUB_WORKSPACE/release/${name}.zip" yomitan-fishaudio-bridge.exe)
+            elif [ -f "${d}yomitan-fishaudio-bridge" ]; then
               (cd "$d" && chmod +x yomitan-fishaudio-bridge && \
-               zip -r "../../release/${name}.zip" yomitan-fishaudio-bridge)
+               zip -r "$GITHUB_WORKSPACE/release/${name}.zip" yomitan-fishaudio-bridge)
             fi
           done
           ls -la release/
