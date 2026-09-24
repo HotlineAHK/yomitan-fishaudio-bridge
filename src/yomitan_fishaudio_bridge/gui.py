@@ -20,7 +20,7 @@ from .tray import HAS_TRAY, TrayController
 
 log = logging.getLogger("bridge.gui")
 
-DOCS_URL = "https://github.com/"
+DOCS_URL = "https://github.com/HotlineAHK/yomitan-fishaudio-bridge"
 APP_TITLE = "Yomitan FishAudio Bridge"
 
 PRIMARY = "#e07030"
