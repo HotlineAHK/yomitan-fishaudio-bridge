@@ -7,6 +7,7 @@ import threading
 import urllib.error
 import urllib.request
 import webbrowser
+from pathlib import Path
 from tkinter import messagebox
 
 import customtkinter as ctk
@@ -15,6 +16,7 @@ from . import __version__, autostart
 from .config import load_config, save_config
 from .i18n import LANGS, set_lang, t
 from .server import BridgeServer, find_free_port
+from .tray import HAS_TRAY, TrayController
 
 log = logging.getLogger("bridge.gui")
 
@@ -41,8 +43,15 @@ LOG_BG = ("#fafafb", "#1f1f22")
 _MONO = {"win32": "Consolas", "darwin": "Menlo"}.get(sys.platform, "Monospace")
 
 
+def _resource_path(rel: str) -> Path:
+    if getattr(sys, "frozen", False):
+        base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    else:
+        base = Path(__file__).resolve().parent.parent.parent
+    return base / rel
+
+
 def _extract_ref_id(text: str) -> str:
-    """Accept either a raw reference_id or a fish.audio URL."""
     text = text.strip()
     if not text:
         return ""
@@ -75,6 +84,7 @@ class App:
         self.cfg = load_config()
         set_lang(self.cfg.get("lang", "ru"))
         self.server = None
+        self.tray = None
         self.log_q = queue.Queue()
         self._copied_reset = None
         self._check_reset = None
@@ -85,8 +95,9 @@ class App:
 
         self.root = ctk.CTk()
         self.root.title(f"{APP_TITLE} {__version__}")
-        self.root.geometry("780x860")
-        self.root.minsize(740, 780)
+        self.root.geometry("780x900")
+        self.root.minsize(740, 820)
+        self._set_window_icon()
 
         self._setup_logging()
         self._build()
@@ -100,7 +111,17 @@ class App:
         log.info("Готово к запуску. Вставьте API-ключ и нажмите «Старт».")
 
         if background:
-            self.root.withdraw()
+            self.root.after(150, self._auto_background_start)
+
+    def _set_window_icon(self):
+        try:
+            import tkinter as tk
+            p = _resource_path("assets/icon.png")
+            if p.exists():
+                self._icon_photo = tk.PhotoImage(file=str(p))
+                self.root.iconphoto(True, self._icon_photo)
+        except Exception as e:
+            log.debug("window icon: %s", e)
 
     def _setup_logging(self):
         root = logging.getLogger()
@@ -110,23 +131,20 @@ class App:
         sh.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
         root.addHandler(sh)
 
+    # ---------- ui ----------
     def _build(self):
         padx = 18
         sect_pady = 8
 
-        # Header
         header = ctk.CTkFrame(self.root, fg_color="transparent")
         header.pack(fill="x", padx=padx, pady=(16, 8))
         title_box = ctk.CTkFrame(header, fg_color="transparent")
         title_box.pack(side="left")
-        ctk.CTkLabel(
-            title_box, text="  ", fg_color=PRIMARY, corner_radius=6,
-            width=22, height=22, text_color=PRIMARY,
-        ).pack(side="left", padx=(0, 10))
-        ctk.CTkLabel(
-            title_box, text=APP_TITLE,
-            font=ctk.CTkFont(size=20, weight="bold"), text_color=PRIMARY,
-        ).pack(side="left")
+        ctk.CTkLabel(title_box, text="  ", fg_color=PRIMARY, corner_radius=6,
+                     width=22, height=22, text_color=PRIMARY).pack(side="left", padx=(0, 10))
+        ctk.CTkLabel(title_box, text=APP_TITLE,
+                     font=ctk.CTkFont(size=20, weight="bold"),
+                     text_color=PRIMARY).pack(side="left")
 
         lang_box = ctk.CTkFrame(header, fg_color="transparent")
         lang_box.pack(side="right")
@@ -143,7 +161,7 @@ class App:
             command=self._on_lang,
         ).pack(side="left")
 
-        # API key card
+        # API key
         card = ctk.CTkFrame(self.root, corner_radius=14, fg_color=CARD,
                             border_width=1, border_color=CARD_BORDER)
         card.pack(fill="x", padx=padx, pady=sect_pady)
@@ -169,7 +187,7 @@ class App:
                      font=ctk.CTkFont(size=11), anchor="w", justify="left",
                      ).pack(anchor="w", pady=(8, 0))
 
-        # Voices card
+        # Voices
         card = ctk.CTkFrame(self.root, corner_radius=14, fg_color=CARD,
                             border_width=1, border_color=CARD_BORDER)
         card.pack(fill="x", padx=padx, pady=sect_pady)
@@ -179,9 +197,8 @@ class App:
                                           font=ctk.CTkFont(size=13, weight="bold"))
         self.voices_title.pack(side="left")
 
-        self.voices_scroll = ctk.CTkScrollableFrame(
-            card, height=140, corner_radius=8, fg_color=LOG_BG,
-        )
+        self.voices_scroll = ctk.CTkScrollableFrame(card, height=140,
+                                                     corner_radius=8, fg_color=LOG_BG)
         self.voices_scroll.pack(fill="x", padx=12, pady=(4, 4))
         self.voices_inner = ctk.CTkFrame(self.voices_scroll, fg_color="transparent")
         self.voices_inner.pack(fill="both", expand=True)
@@ -196,7 +213,7 @@ class App:
             command=self._on_add_voice,
         ).pack(side="left")
 
-        # Settings card
+        # Settings
         card = ctk.CTkFrame(self.root, corner_radius=14, fg_color=CARD,
                             border_width=1, border_color=CARD_BORDER)
         card.pack(fill="x", padx=padx, pady=sect_pady)
@@ -207,6 +224,7 @@ class App:
         ctk.CTkEntry(row, textvariable=self.port_var, width=110, height=34,
                      corner_radius=8, font=ctk.CTkFont(family=_MONO, size=12),
                      justify="center").pack(side="left", padx=(4, 20))
+
         self.autostart_var = ctk.BooleanVar()
         ctk.CTkCheckBox(
             row, text=t("autostart"), variable=self.autostart_var,
@@ -214,9 +232,21 @@ class App:
             border_color=MUTED, checkmark_color="#ffffff",
             font=ctk.CTkFont(size=12),
             command=self._on_autostart,
-        ).pack(side="left")
+        ).pack(side="left", padx=(0, 18))
 
-        # URL card
+        self.tray_var = ctk.BooleanVar(value=False)
+        tray_cb = ctk.CTkCheckBox(
+            row, text=t("minimize_to_tray"), variable=self.tray_var,
+            fg_color=PRIMARY, hover_color=PRIMARY_HOVER,
+            border_color=MUTED, checkmark_color="#ffffff",
+            font=ctk.CTkFont(size=12),
+        )
+        tray_cb.pack(side="left")
+        if not HAS_TRAY:
+            tray_cb.configure(state="disabled")
+            self.tray_var.set(False)
+
+        # URL
         card = ctk.CTkFrame(self.root, corner_radius=14, fg_color=CARD,
                             border_width=1, border_color=CARD_BORDER)
         card.pack(fill="x", padx=padx, pady=sect_pady)
@@ -263,7 +293,6 @@ class App:
             command=self._on_docs,
         ).pack(side="right")
 
-        # Status chip
         self.status_chip = ctk.CTkLabel(
             self.root, text="  " + t("status_stopped") + "  ",
             corner_radius=10, height=26,
@@ -272,7 +301,6 @@ class App:
         )
         self.status_chip.pack(anchor="w", padx=padx + 2, pady=(2, 10))
 
-        # Log
         log_frame = ctk.CTkFrame(self.root, corner_radius=14, fg_color=CARD,
                                  border_width=1, border_color=CARD_BORDER)
         log_frame.pack(fill="both", expand=True, padx=padx, pady=(4, 16))
@@ -281,8 +309,7 @@ class App:
             anchor="w", padx=16, pady=(12, 6))
         self.log_text = ctk.CTkTextbox(
             log_frame, height=120, corner_radius=8, border_width=0,
-            fg_color=LOG_BG,
-            font=ctk.CTkFont(family=_MONO, size=11),
+            fg_color=LOG_BG, font=ctk.CTkFont(family=_MONO, size=11),
         )
         self.log_text.pack(fill="both", expand=True, padx=12, pady=(0, 12))
         self.log_text.configure(state="disabled")
@@ -294,10 +321,8 @@ class App:
         voices = load_config().get("voices", [])
         self.voices_title.configure(text=t("voices_section") + f" ({len(voices)})")
         if not voices:
-            ctk.CTkLabel(
-                self.voices_inner, text=t("voices_empty"),
-                text_color=MUTED, font=ctk.CTkFont(size=12),
-            ).pack(pady=24)
+            ctk.CTkLabel(self.voices_inner, text=t("voices_empty"),
+                         text_color=MUTED, font=ctk.CTkFont(size=12)).pack(pady=24)
             return
         for idx, v in enumerate(voices):
             self._make_voice_row(idx, v)
@@ -341,11 +366,9 @@ class App:
             self._open_voice_dialog(idx, voices[idx])
 
     def _on_delete_voice(self, idx, name):
-        if not messagebox.askyesno(
-            t("confirm_delete_title"),
-            t("confirm_delete", name=name),
-            parent=self.root,
-        ):
+        if not messagebox.askyesno(t("confirm_delete_title"),
+                                   t("confirm_delete", name=name),
+                                   parent=self.root):
             return
         cfg = load_config()
         voices = list(cfg.get("voices", []))
@@ -465,7 +488,8 @@ class App:
             "warn": ((PRIMARY, PRIMARY), ("#ffffff", "#ffffff")),
         }
         fg, fg_text = colors.get(kind, colors["neutral"])
-        self.status_chip.configure(text="  " + text + "  ", fg_color=fg, text_color=fg_text)
+        self.status_chip.configure(text="  " + text + "  ",
+                                    fg_color=fg, text_color=fg_text)
         self._chip_state = kind
 
     # ---------- handlers ----------
@@ -495,14 +519,9 @@ class App:
             self.root.after(0, self._check_done, False, t("no_voices_warn"))
             return
         rid = voices[0]["reference_id"]
-        payload = json.dumps({
-            "text": "test",
-            "reference_id": rid,
-            "format": "mp3",
-        }).encode("utf-8")
+        payload = json.dumps({"text": "test", "reference_id": rid, "format": "mp3"}).encode("utf-8")
         req = urllib.request.Request(
-            "https://api.fish.audio/v1/tts",
-            data=payload,
+            "https://api.fish.audio/v1/tts", data=payload,
             headers={
                 "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",
@@ -566,14 +585,14 @@ class App:
     def _on_docs(self):
         webbrowser.open(DOCS_URL)
 
-    def _on_start(self):
+    def _start_server(self):
         key = self.key_var.get().strip()
         if not key:
             messagebox.showwarning(APP_TITLE, t("key_required"))
-            return
+            return False
         if not load_config().get("voices"):
             messagebox.showwarning(APP_TITLE, t("no_voices_warn"))
-            return
+            return False
         try:
             port = int(self.port_var.get())
         except ValueError:
@@ -595,6 +614,10 @@ class App:
         self._set_chip(t("status_running", port=free), "ok")
         self.start_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
+        return True
+
+    def _on_start(self):
+        self._start_server()
 
     def _on_stop(self):
         if self.server:
@@ -603,12 +626,76 @@ class App:
         self._set_chip(t("status_stopped"), "neutral")
         self.start_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
+        if self.tray:
+            self.tray.stop()
+            self.tray = None
 
-    def _on_close(self):
+    # ---------- tray ----------
+    def _start_tray(self):
+        if not HAS_TRAY or self.tray is not None:
+            return
+        icon_path = _resource_path("assets/icon.png")
+        if not icon_path.exists():
+            log.warning("tray icon not found: %s", icon_path)
+            return
+        self.tray = TrayController(
+            icon_path=str(icon_path),
+            on_show=self._tray_show,
+            on_quit=self._tray_quit,
+            tooltip=t("tray_tooltip"),
+            label_show=t("tray_show"),
+            label_quit=t("tray_quit"),
+        )
+        if not self.tray.start():
+            self.tray = None
+
+    def _tray_show(self):
+        self.root.after(0, self._do_show)
+
+    def _do_show(self):
+        try:
+            self.root.deiconify()
+            self.root.lift()
+            self.root.focus_force()
+        except Exception as e:
+            log.error("show window: %s", e)
+
+    def _tray_quit(self):
+        self.root.after(0, self._do_quit)
+
+    def _do_quit(self):
         if self.server:
             self.server.stop()
-        self.root.destroy()
+            self.server = None
+        if self.tray:
+            self.tray.stop()
+            self.tray = None
+        try:
+            self.root.quit()
+        except Exception:
+            pass
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
 
+    def _auto_background_start(self):
+        if not self.cfg.get("api_key") or not load_config().get("voices"):
+            return
+        if self._start_server():
+            self.root.withdraw()
+            self._start_tray()
+
+    def _on_close(self):
+        # If tray is active and server is running, hide instead of quit
+        if HAS_TRAY and self.tray_var.get() and self.server is not None:
+            self.root.withdraw()
+            self._start_tray()
+            log.info("Свёрнуто в трей. Правый клик по иконке → Выход.")
+            return
+        self._do_quit()
+
+    # ---------- log pump ----------
     def _drain_log(self):
         try:
             while True:

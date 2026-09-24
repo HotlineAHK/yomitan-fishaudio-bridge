@@ -10,7 +10,11 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [{ name = "Yomitan FishAudio Bridge contributors" }]
-dependencies = ["customtkinter>=5.2"]
+dependencies = [
+  "customtkinter>=5.2",
+  "pillow>=10",
+  "pystray>=0.19",
+]
 
 [project.optional-dependencies]
 tray = ["pystray>=0.19", "pillow>=10"]
