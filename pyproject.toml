@@ -14,6 +14,7 @@ dependencies = [
   "customtkinter>=5.2",
   "pillow>=10",
   "pystray>=0.19",
+  "python-xlib>=0.33; sys_platform == 'linux'",
 ]
 
 [project.optional-dependencies]

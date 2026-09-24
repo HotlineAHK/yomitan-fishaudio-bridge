@@ -1,0 +1,151 @@
+name: build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: yomitan-fishaudio-bridge-linux
+            binary: dist/yomitan-fishaudio-bridge
+          - os: windows-latest
+            artifact: yomitan-fishaudio-bridge-windows
+            binary: dist/yomitan-fishaudio-bridge.exe
+          - os: macos-latest
+            artifact: yomitan-fishaudio-bridge-macos
+            binary: dist/yomitan-fishaudio-bridge
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Linux GUI deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk tk-dev
+
+      - name: Install Python deps
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Generate icons
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+
+          ASSETS = Path("assets")
+          ASSETS.mkdir(exist_ok=True)
+
+          def _gradient(size, c1, c2, small=64):
+              img = Image.new("RGB", (small, small))
+              px = img.load()
+              denom = 2 * small - 2
+              for y in range(small):
+                  for x in range(small):
+                      t = (x + y) / denom
+                      px[x, y] = (
+                          int(c1[0] * (1 - t) + c2[0] * t),
+                          int(c1[1] * (1 - t) + c2[1] * t),
+                          int(c1[2] * (1 - t) + c2[2] * t),
+                      )
+              return img.resize((size, size), Image.BILINEAR)
+
+          def make_icon(size=256):
+              s = size / 256.0
+              bg_mask = Image.new("L", (size, size), 0)
+              ImageDraw.Draw(bg_mask).rounded_rectangle(
+                  [0, 0, size - 1, size - 1], radius=int(56 * s), fill=255
+              )
+              grad = _gradient(size, (255, 154, 74), (200, 68, 26)).convert("RGBA")
+              grad.putalpha(bg_mask)
+              canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+              canvas = Image.alpha_composite(canvas, grad)
+              draw = ImageDraw.Draw(canvas)
+              poly = [
+                  (96, 72), (160, 72), (160, 92), (140, 92),
+                  (140, 164), (160, 164), (160, 184), (96, 184),
+                  (96, 164), (116, 164), (116, 92), (96, 92),
+              ]
+              draw.polygon([(x * s, y * s) for x, y in poly], fill=(255, 255, 255, 255))
+              draw.ellipse([(118 * s, 190 * s), (138 * s, 210 * s)],
+                           fill=(255, 255, 255, 217))
+              return canvas
+
+          make_icon(256).save(ASSETS / "icon.png")
+          make_icon(256).save(ASSETS / "icon.ico",
+              sizes=[(16, 16), (24, 24), (32, 32), (48, 48),
+                     (64, 64), (128, 128), (256, 256)])
+          make_icon(1024).save(ASSETS / "icon.icns",
+              sizes=[(16, 16), (32, 32), (64, 64), (128, 128),
+                     (256, 256), (512, 512), (1024, 1024)])
+          PY
+
+      - name: Build with PyInstaller
+        shell: bash
+        run: |
+          pyinstaller yomitan-fishaudio-bridge.spec --noconfirm --clean
+
+      - name: Verify artifact
+        shell: bash
+        run: |
+          ls -la dist/
+          test -f "${{ matrix.binary }}" && echo "OK: ${{ matrix.binary }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.binary }}
+          if-no-files-found: error
+
+  release:
+    name: release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package for release
+        shell: bash
+        run: |
+          mkdir -p release
+          cd artifacts
+          for d in */; do
+            name="${d%/}"
+            if [ -f "$d/yomitan-fishaudio-bridge.exe" ]; then
+              (cd "$d" && zip -r "../../release/${name}.zip" yomitan-fishaudio-bridge.exe)
+            elif [ -f "$d/yomitan-fishaudio-bridge" ]; then
+              (cd "$d" && chmod +x yomitan-fishaudio-bridge && \
+               zip -r "../../release/${name}.zip" yomitan-fishaudio-bridge)
+            fi
+          done
+          ls -la release/
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.zip
+          generate_release_notes: true
