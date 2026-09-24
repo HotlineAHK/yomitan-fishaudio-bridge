@@ -23,9 +23,6 @@ jobs:
           - os: windows-latest
             artifact: yomitan-fishaudio-bridge-windows
             binary: dist/yomitan-fishaudio-bridge.exe
-          - os: macos-latest
-            artifact: yomitan-fishaudio-bridge-macos
-            binary: dist/yomitan-fishaudio-bridge
 
     steps:
       - uses: actions/checkout@v4

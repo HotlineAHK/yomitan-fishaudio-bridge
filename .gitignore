@@ -7,7 +7,6 @@ env/
 .env
 dist/
 build/
-*.spec
 *.egg-info/
 .DS_Store
 Thumbs.db

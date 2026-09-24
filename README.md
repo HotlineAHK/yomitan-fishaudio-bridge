@@ -85,7 +85,7 @@ See [`docs/YOMITAN.md`](docs/YOMITAN.md) and [`docs/FISH_AUDIO.md`](docs/FISH_AU
 
 ## Сборка / Build
 
-### Локально (Linux/macOS)
+### Локально (Linux)
 
 ```sh
 ./scripts/build.sh
@@ -96,8 +96,8 @@ See [`docs/YOMITAN.md`](docs/YOMITAN.md) and [`docs/FISH_AUDIO.md`](docs/FISH_AU
 
 ### Через GitHub Actions
 
-Workflow `.github/workflows/build.yml` собирает артефакты для Windows,
-Linux и macOS при пуше тега вида `v*`:
+Workflow `.github/workflows/build.yml` собирает артефакты для Windows
+и Linux при пуше тега вида `v*`:
 
 ```sh
 git tag v0.1.0
@@ -110,13 +110,14 @@ git push origin v0.1.0
 
 - PyInstaller не умеет кросс-компиляцию — под каждую ОС нужен свой раннер.
   GitHub Actions делает это автоматически.
-- **macOS:** сборка не подписана. При первом запуске Gatekeeper может
-  сказать «приложение повреждено». Обход: `xattr -cr yomitan-fishaudio-bridge`.
+- **Windows:** сборка не подписана, SmartScreen может показать предупреждение
+  («Неизвестный издатель»). Нужно нажать «Подробнее» → «Выполнить в любом случае».
 - **Linux:** сборка — обычный ELF-бинарник, `.AppImage` пока не делаем.
+- **macOS:** пока не поддерживается (сборка снимается с матрицы).
 
 ## Сборка / Build
 
-### Локально (Linux/macOS)
+### Локально (Linux)
 
 ```sh
 ./scripts/build.sh
@@ -127,8 +128,8 @@ git push origin v0.1.0
 
 ### Через GitHub Actions
 
-Workflow `.github/workflows/build.yml` собирает артефакты для Windows,
-Linux и macOS при пуше тега вида `v*`:
+Workflow `.github/workflows/build.yml` собирает артефакты для Windows
+и Linux при пуше тега вида `v*`:
 
 ```sh
 git tag v0.1.0
@@ -141,9 +142,10 @@ git push origin v0.1.0
 
 - PyInstaller не умеет кросс-компиляцию — под каждую ОС нужен свой раннер.
   GitHub Actions делает это автоматически.
-- **macOS:** сборка не подписана. При первом запуске Gatekeeper может
-  сказать «приложение повреждено». Обход: `xattr -cr yomitan-fishaudio-bridge`.
+- **Windows:** сборка не подписана, SmartScreen может показать предупреждение
+  («Неизвестный издатель»). Нужно нажать «Подробнее» → «Выполнить в любом случае».
 - **Linux:** сборка — обычный ELF-бинарник, `.AppImage` пока не делаем.
+- **macOS:** пока не поддерживается (сборка снимается с матрицы).
 
 ## License
 
