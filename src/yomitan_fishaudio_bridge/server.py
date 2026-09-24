@@ -124,10 +124,15 @@ h1{{color:#c8441a}}</style></head>
         cfg = load_config()
         if not cfg["api_key"]:
             return self._json(500, {"detail": "API key not set"})
-        active_ref = reference_id or cfg["reference_id"]
-        active_fmt = fmt or cfg["format"]
+        if not reference_id:
+            voices = cfg.get("voices", [])
+            if voices:
+                reference_id = voices[0]["reference_id"]
+            else:
+                return self._json(400, {"detail": "no voices configured"})
+        active_fmt = fmt or "mp3"
         try:
-            audio = self.server.bridge.synthesize(target, active_ref, active_fmt)
+            audio = self.server.bridge.synthesize(target, reference_id, active_fmt)
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", "replace")
             log.error("Fish Audio HTTP %s: %s", e.code, body)
@@ -143,19 +148,23 @@ h1{{color:#c8441a}}</style></head>
 
 
 class BridgeServer:
-    def __init__(self, host="127.0.0.1", port=47632, variants=None):
+    def __init__(self, host="127.0.0.1", port=47632):
         self.host = host
         self.port = port
-        cfg = load_config()
-        self.variants = variants or [
-            {
-                "name": cfg.get("voice_name", "Indian"),
-                "reference_id": cfg["reference_id"],
-                "format": cfg["format"],
-            }
-        ]
         self._httpd = None
         self._thread = None
+
+    @property
+    def variants(self):
+        cfg = load_config()
+        return [
+            {
+                "name": v.get("name", "Voice"),
+                "reference_id": v["reference_id"],
+                "format": v.get("format", "mp3"),
+            }
+            for v in cfg.get("voices", [])
+        ]
 
     def synthesize(self, text: str, reference_id: str, fmt: str) -> bytes:
         key = f"{text}_{reference_id}_{fmt}"
