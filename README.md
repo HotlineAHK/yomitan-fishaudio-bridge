@@ -114,6 +114,37 @@ git push origin v0.1.0
   сказать «приложение повреждено». Обход: `xattr -cr yomitan-fishaudio-bridge`.
 - **Linux:** сборка — обычный ELF-бинарник, `.AppImage` пока не делаем.
 
+## Сборка / Build
+
+### Локально (Linux/macOS)
+
+```sh
+./scripts/build.sh
+./dist/yomitan-fishaudio-bridge
+```
+
+Бинарник в `dist/` не требует установленного Python.
+
+### Через GitHub Actions
+
+Workflow `.github/workflows/build.yml` собирает артефакты для Windows,
+Linux и macOS при пуше тега вида `v*`:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Готовые сборки появятся на странице Releases репозитория.
+
+### Ограничения
+
+- PyInstaller не умеет кросс-компиляцию — под каждую ОС нужен свой раннер.
+  GitHub Actions делает это автоматически.
+- **macOS:** сборка не подписана. При первом запуске Gatekeeper может
+  сказать «приложение повреждено». Обход: `xattr -cr yomitan-fishaudio-bridge`.
+- **Linux:** сборка — обычный ELF-бинарник, `.AppImage` пока не делаем.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
